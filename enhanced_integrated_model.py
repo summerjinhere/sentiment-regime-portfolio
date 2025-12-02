@@ -2134,68 +2134,63 @@ def create_enhanced_model(
 
 
 if __name__ == "__main__":
-    # Example usage
     print("Enhanced Integrated Model: Weakness Compensation Framework")
     print("=" * 60)
+
+    # 1) 실제 데이터 로드 (Strict Real Data Mode)
+    try:
+        df = pd.read_csv("real_backtest_panel.csv", parse_dates=["date"])
+        df = df.sort_values("date")
+        print(f"Loaded real data: {len(df)} rows from {df['date'].min()} to {df['date'].max()}")
+    except FileNotFoundError:
+        raise FileNotFoundError("CRITICAL: 'real_backtest_panel.csv' not found. You must run 'fetch_real_data.py' first to download REAL historical data.")
+
+    # 필드 매핑
+    returns = df[[c for c in df.columns if c.startswith("ret_asset_")]].values
+    factor_returns = df[[c for c in df.columns if c.startswith("factor_")]].values
     
-    # Create model
-    model = create_enhanced_model(n_assets=10, n_factors=3)
+    if returns.shape[1] == 0:
+         raise ValueError("No asset returns found in CSV. Check data generation.")
+
+    n_assets = returns.shape[1]
+    print(f"Detected {n_assets} assets.")
+
+    # 2) 모델 생성 (Dynamic n_assets)
+    model = create_enhanced_model(n_assets=n_assets, n_factors=3)
+
+    macro_vars = {
+        "VIX": df["VIX"].values,
+        "TERM_SPREAD": df["TERM_SPREAD"].values,
+        "CREDIT_SPREAD": df["CREDIT_SPREAD"].values,
+    }
+    sentiment_series = df["sentiment"].values
     
-    # Generate synthetic data for demonstration
-    np.random.seed(42)
-    T = 500
-    n_assets = 10
-    n_factors = 3
-    
-    # Synthetic returns
-    factor_returns = np.random.randn(T, n_factors) * 0.01
-    factor_loading = np.random.randn(n_assets, n_factors) * 0.5
-    idio_returns = np.random.randn(T, n_assets) * 0.005
-    returns = factor_returns @ factor_loading.T + idio_returns
-    
-    # Synthetic predictors
-    predictors = pd.DataFrame({
-        'VIX': np.random.randn(T) * 5 + 20,
-        'TERM_SPREAD': np.random.randn(T) * 0.5 + 1.5,
-        'CREDIT_SPREAD': np.random.randn(T) * 0.3 + 2.0,
-        'SENTIMENT': np.random.randn(T) * 0.2
-    })
-    
-    # Synthetic regimes
-    regimes = np.random.choice([0, 1, 2], T, p=[0.4, 0.3, 0.3])
-    
+    # Regimes (Simple detection since we don't have pre-calculated regimes in panel yet)
+    # We will use a simple rule based on VIX for this demo to avoid synthetic generation
+    # Low VIX (<20) = Bull (0), High VIX (>30) = Bear (2), Else Transition (1)
+    regimes = np.where(df['VIX'] < 20, 0, np.where(df['VIX'] > 30, 2, 1))
+
     # Fit model
-    print("\nFitting model...")
+    print("\nFitting model with REAL data...")
     model.fit(
         returns=returns,
         factor_returns=factor_returns,
-        predictors=predictors,
-        sentiment_history=predictors['SENTIMENT'].values,
+        predictors=pd.DataFrame(macro_vars),
+        sentiment_history=sentiment_series,
         regimes=regimes
     )
-    
-    # Process daily update
-    print("\nProcessing daily update...")
+
+    # 3) 예시: 마지막 시점 시그널 & 검증
     daily_signals = model.process_daily_update(
-        returns=returns[-1],
-        factor_returns=factor_returns[-1],
-        news_headlines=["Market rises on strong earnings", "Fed signals rate pause"],
-        macro_predictors=predictors.iloc[-1],
-        regime=MarketRegime.BULL
+        returns=returns[-1, :],
+        factor_returns=factor_returns[-1, :],
+        news_headlines=["Market analysis based on real data"], # Placeholder since we don't have real news feed
+        macro_predictors=pd.Series(macro_vars).apply(lambda x: x[-1]),
+        regime=MarketRegime(regimes[-1])
     )
-    
-    print(f"\nDaily Signals:")
-    print(f"  Sentiment: {daily_signals['sentiment']['current']:.3f}")
-    print(f"  Volatility Adjustment: {daily_signals['sentiment']['vol_adjustment']['total_vol_adjustment']:.3f}")
-    print(f"  Long-run Vol: {daily_signals['long_run_vol']:.3f}")
-    print(f"  Combined Vol: {daily_signals['predicted_volatility']['combined']:.3f}")
-    
-    # Validation
-    print("\nRunning validation...")
-    portfolio_returns = returns.mean(axis=1)  # Equal-weight for demo
-    benchmark_returns = factor_returns[:, 0]  # First factor as benchmark
-    
+
+    portfolio_returns = returns.mean(axis=1)      # 예: equal-weight 전략
+    benchmark_returns = factor_returns[:, 0]      # 예: 첫 factor를 벤치마크로
+
     validation = model.validate_performance(portfolio_returns, benchmark_returns)
-    print(validation['report'])
-    
-    print("\n✓ Enhanced Integrated Model demonstration complete")
+    print(validation["report"])
