@@ -1,124 +1,189 @@
-import pandas as pd
-import yfinance as yf
-import numpy as np
-from datetime import datetime, timedelta
+"""
+Real Market Data Fetcher
+========================
 
-def fetch_real_data():
-    print("Downloading real historical data from yfinance...")
+Downloads historical price data from Yahoo Finance for the complete asset universe.
+Saves adjusted close prices and returns to CSV files.
+
+NO SYNTHETIC DATA - Real market data only.
+"""
+
+import pandas as pd
+import numpy as np
+import yfinance as yf
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
+
+# =============================================================================
+# ASSET UNIVERSE DEFINITION
+# =============================================================================
+
+ASSET_UNIVERSE = {
+    'Technology': ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL', 'ADBE', 'CRM', 'AMD', 'QCOM', 'INTC'],
+    'Healthcare': ['LLY', 'UNH', 'JNJ', 'MRK', 'ABBV', 'TMO', 'ABT', 'PFE', 'AMGN', 'DHR'],
+    'Financials': ['JPM', 'V', 'MA', 'BAC', 'WFC', 'MS', 'GS', 'BLK', 'C', 'AXP'],
+    'Consumer': ['AMZN', 'TSLA', 'HD', 'PG', 'COST', 'WMT', 'KO', 'PEP', 'MCD', 'NKE'],
+    'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL'],
+    'Utilities': ['NEE', 'SO', 'DUK', 'CEG', 'AEP', 'SRE', 'PEG', 'ED', 'EXC', 'XEL'],
+    'Bonds': ['TLT', 'IEF', 'SHY', 'LQD', 'HYG', 'BND', 'AGG', 'MUB', 'TIP', 'BNDX'],
+    'Commodities': ['GLD', 'SLV', 'USO', 'UNG', 'DBC', 'DBA', 'GSG', 'PALL', 'PPLT', 'CPER'],
+    'Indices': ['SPY', 'QQQ', 'IWM', 'DIA']
+}
+
+
+def get_all_tickers():
+    """Get flat list of all tickers"""
+    all_tickers = []
+    for sector, tickers in ASSET_UNIVERSE.items():
+        all_tickers.extend(tickers)
+    return list(set(all_tickers))
+
+
+def fetch_price_data(start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """
+    Fetch adjusted close prices from Yahoo Finance
     
-    # 1. Define Tickers (Expanded Universe)
-    assets_map = {
-        'Technology': ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL', 'ADBE', 'CRM', 'AMD', 'QCOM', 'INTC'],
-        'Healthcare': ['LLY', 'UNH', 'JNJ', 'MRK', 'ABBV', 'TMO', 'ABT', 'PFE', 'AMGN', 'DHR'],
-        'Financials': ['JPM', 'V', 'MA', 'BAC', 'WFC', 'MS', 'GS', 'BLK', 'C', 'AXP'],
-        'Consumer': ['AMZN', 'TSLA', 'HD', 'PG', 'COST', 'WMT', 'KO', 'PEP', 'MCD', 'NKE'],
-        'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL'],
-        'Utilities': ['NEE', 'SO', 'DUK', 'CEG', 'AEP', 'SRE', 'PEG', 'ED', 'EXC', 'XEL'],
-        'Bonds': ['TLT', 'IEF', 'SHY', 'LQD', 'HYG', 'BND', 'AGG', 'MUB', 'TIP', 'BNDX'],
-        'Commodities': ['GLD', 'SLV', 'USO', 'UNG', 'DBC', 'DBA', 'GSG', 'PALL', 'PPLT', 'CPER']
-    }
+    Args:
+        start_date: Start date (default: 2 years ago)
+        end_date: End date (default: today)
     
-    all_assets = []
-    for sector_tickers in assets_map.values():
-        all_assets.extend(sector_tickers)
-        
-    benchmarks = ["SPY", "QQQ", "IWM", "DIA", "EFA", "EEM", "XLK", "XLF", "XLE", "XLV"]
+    Returns:
+        DataFrame with adjusted close prices
+    """
+    if end_date is None:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+    if start_date is None:
+        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
     
-    # Factors & Macro
-    factors = ['SPY', 'QQQ', 'IWM'] 
-    macro = ['^VIX', '^TNX'] 
+    all_tickers = get_all_tickers()
     
-    all_tickers = list(set(all_assets + benchmarks + factors + macro))
+    print(f"=" * 70)
+    print(f"REAL DATA FETCHER - Yahoo Finance")
+    print(f"=" * 70)
+    print(f"Period: {start_date} to {end_date}")
+    print(f"Total Tickers: {len(all_tickers)}")
+    print(f"=" * 70)
     
-    # 2. Download Data (Last 2 years)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=730)
+    # Download all at once (more efficient)
+    print("\nDownloading price data...")
+    data = yf.download(
+        tickers=all_tickers,
+        start=start_date,
+        end=end_date,
+        progress=True,
+        auto_adjust=True  # Use adjusted prices
+    )
     
-    print(f"Fetching {len(all_tickers)} tickers...")
-    data = yf.download(all_tickers, start=start_date, end=end_date, progress=False, auto_adjust=False)
-    
-    if data.empty:
-        raise RuntimeError("Failed to download data from yfinance.")
-        
-    # Handle MultiIndex
+    # Extract Close prices
     if isinstance(data.columns, pd.MultiIndex):
         prices = data['Close']
     else:
         prices = data
-        
-    # Drop columns with all NaNs
-    prices = prices.dropna(axis=1, how='all')
     
-    # Forward fill then drop remaining NaNs
-    prices = prices.ffill().dropna()
+    # Clean data
+    prices = prices.dropna(axis=1, how='all')  # Remove tickers with no data
+    prices = prices.ffill().bfill()  # Forward/backward fill missing values
     
-    if len(prices) < 252:
-        raise RuntimeError(f"Insufficient data history. Got {len(prices)} days.")
-        
-    print(f"Downloaded {len(prices)} days of data.")
+    print(f"\n✅ Successfully fetched {len(prices.columns)} tickers")
+    print(f"   Trading days: {len(prices)}")
     
-    # 3. Calculate Returns
+    return prices
+
+
+def calculate_returns(prices: pd.DataFrame) -> pd.DataFrame:
+    """Calculate daily returns"""
     returns = prices.pct_change().dropna()
+    return returns
+
+
+def create_sector_mapping(prices: pd.DataFrame) -> pd.DataFrame:
+    """Create ticker to sector mapping"""
+    mapping = []
+    for sector, tickers in ASSET_UNIVERSE.items():
+        for ticker in tickers:
+            if ticker in prices.columns:
+                mapping.append({'Ticker': ticker, 'Sector': sector})
+    return pd.DataFrame(mapping)
+
+
+def save_data(prices: pd.DataFrame, output_file: str = 'real_backtest_panel.csv'):
+    """
+    Save prices and returns to CSV
     
-    # 4. Prepare real_backtest_panel.csv
-    df_panel = pd.DataFrame()
-    df_panel['date'] = returns.index
+    Format:
+    - Date column
+    - Price columns for each ticker
+    - Return columns for each ticker (suffixed with _ret)
+    """
+    returns = calculate_returns(prices)
     
-    # Assets
-    for asset in all_assets:
-        if asset in returns.columns:
-            df_panel[f'ret_asset_{asset}'] = returns[asset].values
-            
-    # Factors
-    for i, factor in enumerate(factors):
-        if factor in returns.columns:
-            df_panel[f'factor_{i}'] = returns[factor].values
-            
-    # Macro & Sentiment
-    if '^VIX' in prices.columns:
-        df_panel['VIX'] = prices['^VIX'].values[1:] 
-    else:
-        df_panel['VIX'] = 20.0 
-        
-    if '^TNX' in prices.columns:
-        df_panel['TERM_SPREAD'] = prices['^TNX'].values[1:]
-    else:
-        df_panel['TERM_SPREAD'] = 1.5
-        
-    df_panel['CREDIT_SPREAD'] = df_panel['VIX'] * 0.1 
+    # Create combined DataFrame
+    prices_df = prices.copy()
+    prices_df.columns = [f"{col}_price" for col in prices_df.columns]
     
-    vix = df_panel['VIX']
-    df_panel['sentiment'] = ((vix.mean() - vix) / vix.std()).clip(-2, 2) / 2 
+    returns_df = returns.copy()
+    returns_df.columns = [f"{col}_ret" for col in returns_df.columns]
     
-    df_panel.to_csv('real_backtest_panel.csv', index=False)
-    print("Saved real_backtest_panel.csv")
+    # Align indices
+    common_idx = prices_df.index.intersection(returns_df.index)
     
-    # 5. Prepare real_backtest_results.csv
-    # Strategy: Equal Weight of Assets
-    asset_cols = [c for c in df_panel.columns if c.startswith('ret_asset_')]
-    strategy_ret = df_panel[asset_cols].mean(axis=1)
+    combined = pd.concat([
+        prices_df.loc[common_idx],
+        returns_df.loc[common_idx]
+    ], axis=1)
     
-    df_results = pd.DataFrame({
-        'date': df_panel['date'],
-        'strategy_ret': strategy_ret
-    })
+    combined.index.name = 'Date'
+    combined.to_csv(output_file)
     
-    # Add all benchmarks
-    for bench in benchmarks:
-        if bench in returns.columns:
-            df_results[f'benchmark_{bench}'] = returns[bench].values
-        else:
-            print(f"Warning: Benchmark {bench} missing from data.")
-            
-    # Ensure primary benchmark exists (SPY)
-    if 'benchmark_SPY' not in df_results.columns:
-         df_results['benchmark_SPY'] = strategy_ret # Fallback only if SPY download failed completely
+    print(f"\n📁 Saved to {output_file}")
+    print(f"   Rows: {len(combined)}")
+    print(f"   Price columns: {len(prices.columns)}")
+    print(f"   Return columns: {len(returns.columns)}")
     
-    # Alias benchmark_ret to SPY for backward compatibility
-    df_results['benchmark_ret'] = df_results['benchmark_SPY']
+    # Also save sector mapping
+    sector_map = create_sector_mapping(prices)
+    sector_map.to_csv('sector_mapping.csv', index=False)
+    print(f"   Sector mapping saved to sector_mapping.csv")
     
-    df_results.to_csv('real_backtest_results.csv', index=False)
-    print("Saved real_backtest_results.csv")
+    return combined
+
+
+def main():
+    """Main execution"""
+    print("\n" + "=" * 70)
+    print("AI FINANCE PROJECT - REAL DATA FETCHER")
+    print("Weakness Compensation Framework")
+    print("=" * 70)
+    
+    # Fetch data (last 2 years)
+    prices = fetch_price_data()
+    
+    # Save to CSV
+    data = save_data(prices)
+    
+    # Print summary statistics
+    returns = calculate_returns(prices)
+    
+    print("\n" + "=" * 70)
+    print("SUMMARY STATISTICS")
+    print("=" * 70)
+    
+    for sector, tickers in ASSET_UNIVERSE.items():
+        available = [t for t in tickers if t in returns.columns]
+        if available:
+            sector_ret = returns[available].mean(axis=1)
+            ann_ret = sector_ret.mean() * 252
+            ann_vol = sector_ret.std() * np.sqrt(252)
+            sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
+            print(f"{sector:12} | Tickers: {len(available):2} | "
+                  f"Ann.Ret: {ann_ret:6.1%} | Vol: {ann_vol:6.1%} | Sharpe: {sharpe:5.2f}")
+    
+    print("\n✅ Data fetching complete!")
+    print("=" * 70)
+    
+    return data
+
 
 if __name__ == "__main__":
-    fetch_real_data()
+    main()
