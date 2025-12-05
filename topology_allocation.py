@@ -138,9 +138,33 @@ class HRPAllocator:
         if not SCIPY_AVAILABLE:
             raise ImportError("scipy required")
         
+        # Filter out zero-variance columns (e.g., delisted stocks like ATVI)
+        variances = returns.var()
+        zero_var_cols = variances[variances < 1e-10].index.tolist()
+        if zero_var_cols:
+            print(f"⚠️ Dropping {len(zero_var_cols)} zero-variance assets: {zero_var_cols}")
+            returns = returns.drop(columns=zero_var_cols)
+        
+        # Also drop columns with too many NaNs
+        nan_pct = returns.isna().mean()
+        high_nan_cols = nan_pct[nan_pct > 0.5].index.tolist()
+        if high_nan_cols:
+            print(f"⚠️ Dropping {len(high_nan_cols)} high-NaN assets: {high_nan_cols}")
+            returns = returns.drop(columns=high_nan_cols)
+        
+        # Fill remaining NaNs
+        returns = returns.fillna(0)
+        
+        self.valid_assets = returns.columns.tolist()
+        
         # Compute covariance and correlation
         self.cov = returns.cov()
         self.corr = returns.corr()
+        
+        # Check for NaN in correlation
+        if self.corr.isna().any().any():
+            print("⚠️ NaN in correlation matrix, replacing with 0")
+            self.corr = self.corr.fillna(0)
         
         # Convert to distance
         self.dist = correlation_to_distance(self.corr, self.config.distance_metric)
@@ -177,8 +201,12 @@ class HRPAllocator:
                     var_left = get_cluster_variance(self.cov, left)
                     var_right = get_cluster_variance(self.cov, right)
                     
-                    # Allocate inversely proportional to variance
-                    alpha = 1 - var_left / (var_left + var_right)
+                    # Avoid division by zero
+                    total_var = var_left + var_right
+                    if total_var < 1e-10:
+                        alpha = 0.5
+                    else:
+                        alpha = 1 - var_left / total_var
                     
                     # Update weights
                     weights[left] *= alpha

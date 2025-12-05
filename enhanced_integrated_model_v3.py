@@ -702,38 +702,31 @@ class EnhancedIntegratedModel:
             
             data = pd.read_csv(prices_file, index_col=0, parse_dates=True)
             
+            # Calculate returns
             ret_cols = [c for c in data.columns if c.endswith('_ret')]
             self.returns = data[ret_cols].copy()
             self.returns.columns = [c.replace('_ret', '') for c in ret_cols]
+            
+            # Filter out zero-variance columns (delisted stocks like ATVI)
+            variances = self.returns.var()
+            zero_var_cols = variances[variances < 1e-10].index.tolist()
+            if zero_var_cols:
+                print(f"⚠️ Dropping {len(zero_var_cols)} zero-variance assets: {zero_var_cols}")
+                self.returns = self.returns.drop(columns=zero_var_cols)
             
             price_cols = [c for c in data.columns if c.endswith('_price')]
             self.prices = data[price_cols].copy()
             self.prices.columns = [c.replace('_price', '') for c in price_cols]
             
+            # Keep only assets that exist in returns
+            common_tickers = self.returns.columns.intersection(self.prices.columns)
+            self.returns = self.returns[common_tickers]
+            self.prices = self.prices[common_tickers]
+            
             if trading_days and len(self.returns) > trading_days:
                 self.returns = self.returns.iloc[-trading_days:]
                 self.prices = self.prices.iloc[-trading_days:]
                 print(f"   Filtered to last {trading_days} trading days")
-            
-            # Data Cleaning
-            try:
-                # 1. Drop columns with zero variance (constant prices)
-                stds = self.returns.std()
-                zero_var_cols = stds[stds < 1e-8].index
-                if len(zero_var_cols) > 0:
-                    print(f"   [INFO] Dropping {len(zero_var_cols)} assets with zero variance")
-                    self.returns = self.returns.drop(columns=zero_var_cols)
-                    # Also drop from prices if present
-                    price_cols_to_drop = [c for c in zero_var_cols if c in self.prices.columns]
-                    if price_cols_to_drop:
-                        self.prices = self.prices.drop(columns=price_cols_to_drop)
-                
-                # 2. Fill NaNs
-                if self.returns.isna().sum().sum() > 0:
-                    print(f"   [INFO] Filling {self.returns.isna().sum().sum()} NaNs in returns with 0")
-                    self.returns = self.returns.fillna(0)
-            except Exception as e:
-                print(f"   [ERROR] Data cleaning failed: {e}")
             
             if benchmark in self.returns.columns:
                 self.market_returns = self.returns[benchmark]
