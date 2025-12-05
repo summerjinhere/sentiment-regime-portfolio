@@ -69,99 +69,66 @@ def fetch_data(
     print(f"Period: {start_date} to {end_date}")
     print()
     
-    try:
-        print("Downloading from Yahoo Finance (Sequential)...")
-        
-        all_prices = []
-        valid_tickers = []
-        
-        for ticker in tickers:
-            try:
-                # Download single ticker
-                df = yf.download(ticker, start=start_date, end=end_date, progress=False)
-                
-                if df.empty:
-                    continue
-                
-                # Extract Close/Adj Close
-                if 'Adj Close' in df.columns:
-                    price = df['Adj Close']
-                elif 'Close' in df.columns:
-                    price = df['Close']
-                else:
-                    # Fallback
-                    price = df.iloc[:, 0] if not df.empty else None
-                
-                if price is not None:
-                    # Rename series to ticker
-                    if isinstance(price, pd.DataFrame):
-                        price = price.iloc[:, 0]
-                    price.name = ticker
-                    all_prices.append(price)
-                    valid_tickers.append(ticker)
-                    print(f"  ✅ {ticker}")
-                else:
-                    print(f"  ⚠️ {ticker} (No price data)")
-                    
-            except Exception as e:
-                print(f"  ❌ {ticker}: {e}")
-                continue
-        
-        print(f"\nSuccessfully fetched {len(valid_tickers)}/{len(tickers)} tickers.")
-        
-        if not all_prices:
-            print("❌ No data downloaded")
-            return None
-        
-        # Combine into DataFrame
-        prices = pd.concat(all_prices, axis=1)
-        prices.columns = valid_tickers
-        
-        # Calculate returns
-        returns = prices.pct_change()
-        
-        # Drop rows with all NaN
-        prices = prices.dropna(how='all')
-        returns = returns.dropna(how='all')
-        
-        # Create panel format
-        panel = pd.DataFrame(index=returns.index)
-        
-        for ticker in prices.columns:
+    # Download data
+    print("Downloading from Yahoo Finance...")
+    data = yf.download(tickers, start=start_date, end=end_date, progress=True)
+    
+    if data.empty:
+        print("❌ No data downloaded")
+        return None
+    
+    # Extract close prices (User requested Close instead of Adj Close)
+    if 'Close' in data.columns.get_level_values(0):
+        prices = data['Close']
+    elif 'Adj Close' in data.columns.get_level_values(0):
+        prices = data['Adj Close']
+    else:
+        prices = data
+    
+    # Handle single ticker case
+    if isinstance(prices, pd.Series):
+        prices = prices.to_frame(name=tickers[0])
+    
+    # Calculate returns
+    returns = prices.pct_change()
+    
+    # Drop rows with all NaN
+    prices = prices.dropna(how='all')
+    returns = returns.dropna(how='all')
+    
+    # Create panel format
+    panel = pd.DataFrame(index=returns.index)
+    
+    for ticker in prices.columns:
+        if ticker in prices.columns:
             panel[f'{ticker}_price'] = prices[ticker]
             panel[f'{ticker}_ret'] = returns[ticker]
-        
-        # Drop rows with too many NaN
-        panel = panel.dropna(thresh=len(panel.columns) * 0.5)
-        
-        # Fill remaining NaN with 0 for returns
-        ret_cols = [c for c in panel.columns if c.endswith('_ret')]
-        panel[ret_cols] = panel[ret_cols].fillna(0)
-        
-        # Forward fill prices
-        price_cols = [c for c in panel.columns if c.endswith('_price')]
-        panel[price_cols] = panel[price_cols].ffill()
-        
-        # Save
-        panel.to_csv(output_file)
-        
-        print()
-        print("=" * 70)
-        print("DATA COLLECTION COMPLETE")
-        print("=" * 70)
-        print(f"✅ Saved to: {output_file}")
-        print(f"   Trading days: {len(panel)}")
-        print(f"   Assets: {len(prices.columns)}")
-        print(f"   Date range: {panel.index[0].date()} to {panel.index[-1].date()}")
-        print(f"   File size: {panel.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
-        
-        return panel
-
-    except Exception as e:
-        print(f"\n❌ Error processing data: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+    
+    # Drop rows with too many NaN
+    panel = panel.dropna(thresh=len(panel.columns) * 0.5)
+    
+    # Fill remaining NaN with 0 for returns
+    ret_cols = [c for c in panel.columns if c.endswith('_ret')]
+    panel[ret_cols] = panel[ret_cols].fillna(0)
+    
+    # Forward fill prices
+    price_cols = [c for c in panel.columns if c.endswith('_price')]
+    panel[price_cols] = panel[price_cols].ffill()
+    
+    # Save
+    panel.to_csv(output_file)
+    
+    print()
+    print("=" * 70)
+    print("DATA COLLECTION COMPLETE")
+    print("=" * 70)
+    print(f"✅ Saved to: {output_file}")
+    print(f"   Trading days: {len(panel)}")
+    print(f"   Assets: {len(prices.columns)}")
+    print(f"   Date range: {panel.index[0].date()} to {panel.index[-1].date()}")
+    print(f"   File size: {panel.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
+    
+    return panel
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+﻿Loading real_backtest_panel.csv...
+Data shape: (5264, 148)
+Returns shape: (5264, 74)
+Calculating covariance matrix...
+Covariance matrix is symmetric.
+Calculating correlation matrix...
+NaNs found in correlation matrix!
+AAPL_ret    1
+ABBV_ret    1
+AMD_ret     1
+AMGN_ret    1
+AMZN_ret    1
+           ..
+VLO_ret     1
+VZ_ret      1
+WFC_ret     1
+WMT_ret     1
+XOM_ret     1
+Length: 74, dtype: int64
+Testing squareform on distance matrix...
+squareform passed.

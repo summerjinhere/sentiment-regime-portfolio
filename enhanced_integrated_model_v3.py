@@ -715,6 +715,26 @@ class EnhancedIntegratedModel:
                 self.prices = self.prices.iloc[-trading_days:]
                 print(f"   Filtered to last {trading_days} trading days")
             
+            # Data Cleaning
+            try:
+                # 1. Drop columns with zero variance (constant prices)
+                stds = self.returns.std()
+                zero_var_cols = stds[stds < 1e-8].index
+                if len(zero_var_cols) > 0:
+                    print(f"   [INFO] Dropping {len(zero_var_cols)} assets with zero variance")
+                    self.returns = self.returns.drop(columns=zero_var_cols)
+                    # Also drop from prices if present
+                    price_cols_to_drop = [c for c in zero_var_cols if c in self.prices.columns]
+                    if price_cols_to_drop:
+                        self.prices = self.prices.drop(columns=price_cols_to_drop)
+                
+                # 2. Fill NaNs
+                if self.returns.isna().sum().sum() > 0:
+                    print(f"   [INFO] Filling {self.returns.isna().sum().sum()} NaNs in returns with 0")
+                    self.returns = self.returns.fillna(0)
+            except Exception as e:
+                print(f"   [ERROR] Data cleaning failed: {e}")
+            
             if benchmark in self.returns.columns:
                 self.market_returns = self.returns[benchmark]
             elif 'SPY' in self.returns.columns:
@@ -791,21 +811,47 @@ class EnhancedIntegratedModel:
             return pd.Series(self.volatilities[ticker], index=self.returns.index)
         return pd.Series()
     
-    def get_optimal_weights(self, method: str = 'mean_variance') -> pd.Series:
+    def get_optimal_weights(self, method: str = 'hrp') -> pd.Series:
+        """
+        Get optimal portfolio weights.
+        
+        Methods:
+        - 'hrp': Hierarchical Risk Parity (default, recommended)
+        - 'herc': Hierarchical Equal Risk Contribution
+        - 'network': Network/MST-based allocation
+        - 'mean_variance': Traditional MVO
+        - 'equal_weight': 1/N
+        """
         if not self.fitted:
             raise ValueError("Model not fitted")
         
-        base_returns = self.returns.mean()
-        date = self.returns.index[-1]
-        expected_returns = self.layer2_sentiment.adjust_expected_returns(base_returns, date)
-        
-        cov_matrix = self.returns.cov()
-        tickers = list(expected_returns.index)
+        tickers = list(self.returns.columns)
         n = len(tickers)
         
-        if method == 'equal_weight':
+        # Topology-based methods (HRP, HERC, Network)
+        if method in ['hrp', 'herc', 'network']:
+            try:
+                from topology_allocation import TopologyAllocator, TopologyConfig, integrate_with_model
+                
+                # Use topology allocation integrated with model signals
+                weights = integrate_with_model(self, self.returns, method=method)
+                
+                print(f"✅ {method.upper()} allocation applied")
+                return weights
+                
+            except ImportError:
+                print(f"⚠️ topology_allocation not found, falling back to equal weight")
+                weights = pd.Series(1.0/n, index=tickers)
+        
+        elif method == 'equal_weight':
             weights = pd.Series(1.0/n, index=tickers)
+        
         elif method == 'mean_variance' and SCIPY_AVAILABLE:
+            base_returns = self.returns.mean()
+            date = self.returns.index[-1]
+            expected_returns = self.layer2_sentiment.adjust_expected_returns(base_returns, date)
+            
+            cov_matrix = self.returns.cov()
             mu = expected_returns.values
             cov = cov_matrix.values
             gamma = self.config.risk_aversion
