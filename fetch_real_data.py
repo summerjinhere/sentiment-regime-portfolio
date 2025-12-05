@@ -1,23 +1,18 @@
 """
 Real Market Data Fetcher
 ========================
-
-Downloads historical price data from Yahoo Finance for the complete asset universe.
-Saves adjusted close prices and returns to CSV files.
-
+Downloads historical price data from Yahoo Finance.
 NO SYNTHETIC DATA - Real market data only.
 """
 
 import pandas as pd
 import numpy as np
-import yfinance as yf
+import argparse
 from datetime import datetime, timedelta
 import warnings
+import sys
 warnings.filterwarnings('ignore')
-
-# =============================================================================
-# ASSET UNIVERSE DEFINITION
-# =============================================================================
+sys.stdout.reconfigure(encoding='utf-8')
 
 ASSET_UNIVERSE = {
     'Technology': ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL', 'ADBE', 'CRM', 'AMD', 'QCOM', 'INTC'],
@@ -31,48 +26,46 @@ ASSET_UNIVERSE = {
     'Indices': ['SPY', 'QQQ', 'IWM', 'DIA']
 }
 
-
 def get_all_tickers():
-    """Get flat list of all tickers"""
     all_tickers = []
-    for sector, tickers in ASSET_UNIVERSE.items():
+    for tickers in ASSET_UNIVERSE.values():
         all_tickers.extend(tickers)
     return list(set(all_tickers))
 
-
-def fetch_price_data(start_date: str = None, end_date: str = None) -> pd.DataFrame:
-    """
-    Fetch adjusted close prices from Yahoo Finance
+def main():
+    parser = argparse.ArgumentParser(description='Fetch real market data')
+    parser.add_argument('--trading-days', type=int, default=5040, help='Number of trading days (~20 years = 5040)')
+    parser.add_argument('--output', type=str, default='real_backtest_panel.csv', help='Output file')
+    args = parser.parse_args()
     
-    Args:
-        start_date: Start date (default: 2 years ago)
-        end_date: End date (default: today)
+    print("=" * 70)
+    print("REAL DATA FETCHER - Yahoo Finance")
+    print("=" * 70)
     
-    Returns:
-        DataFrame with adjusted close prices
-    """
-    if end_date is None:
-        end_date = datetime.now().strftime('%Y-%m-%d')
-    if start_date is None:
-        start_date = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+    try:
+        import yfinance as yf
+    except ImportError:
+        print("Error: yfinance not installed. Run: pip install yfinance")
+        return
+    
+    # Calculate date range
+    end_date = datetime.now()
+    # Add buffer for weekends/holidays
+    start_date = end_date - timedelta(days=int(args.trading_days * 1.5))
     
     all_tickers = get_all_tickers()
+    print(f"Tickers: {len(all_tickers)}")
+    print(f"Date range: {start_date.date()} to {end_date.date()}")
+    print(f"Target trading days: {args.trading_days}")
     
-    print(f"=" * 70)
-    print(f"REAL DATA FETCHER - Yahoo Finance")
-    print(f"=" * 70)
-    print(f"Period: {start_date} to {end_date}")
-    print(f"Total Tickers: {len(all_tickers)}")
-    print(f"=" * 70)
-    
-    # Download all at once (more efficient)
-    print("\nDownloading price data...")
+    # Download
+    print("\nDownloading...")
     data = yf.download(
         tickers=all_tickers,
-        start=start_date,
-        end=end_date,
-        progress=True,
-        auto_adjust=True  # Use adjusted prices
+        start=start_date.strftime('%Y-%m-%d'),
+        end=end_date.strftime('%Y-%m-%d'),
+        progress=False,
+        auto_adjust=True
     )
     
     # Extract Close prices
@@ -81,42 +74,16 @@ def fetch_price_data(start_date: str = None, end_date: str = None) -> pd.DataFra
     else:
         prices = data
     
-    # Clean data
-    prices = prices.dropna(axis=1, how='all')  # Remove tickers with no data
-    prices = prices.ffill().bfill()  # Forward/backward fill missing values
+    # Clean
+    prices = prices.dropna(axis=1, how='all')
+    prices = prices.ffill().bfill()
     
-    print(f"\n✅ Successfully fetched {len(prices.columns)} tickers")
-    print(f"   Trading days: {len(prices)}")
+    # Limit to trading days
+    if len(prices) > args.trading_days:
+        prices = prices.iloc[-args.trading_days:]
     
-    return prices
-
-
-def calculate_returns(prices: pd.DataFrame) -> pd.DataFrame:
-    """Calculate daily returns"""
+    # Calculate returns
     returns = prices.pct_change().dropna()
-    return returns
-
-
-def create_sector_mapping(prices: pd.DataFrame) -> pd.DataFrame:
-    """Create ticker to sector mapping"""
-    mapping = []
-    for sector, tickers in ASSET_UNIVERSE.items():
-        for ticker in tickers:
-            if ticker in prices.columns:
-                mapping.append({'Ticker': ticker, 'Sector': sector})
-    return pd.DataFrame(mapping)
-
-
-def save_data(prices: pd.DataFrame, output_file: str = 'real_backtest_panel.csv'):
-    """
-    Save prices and returns to CSV
-    
-    Format:
-    - Date column
-    - Price columns for each ticker
-    - Return columns for each ticker (suffixed with _ret)
-    """
-    returns = calculate_returns(prices)
     
     # Create combined DataFrame
     prices_df = prices.copy()
@@ -125,65 +92,29 @@ def save_data(prices: pd.DataFrame, output_file: str = 'real_backtest_panel.csv'
     returns_df = returns.copy()
     returns_df.columns = [f"{col}_ret" for col in returns_df.columns]
     
-    # Align indices
     common_idx = prices_df.index.intersection(returns_df.index)
-    
-    combined = pd.concat([
-        prices_df.loc[common_idx],
-        returns_df.loc[common_idx]
-    ], axis=1)
-    
+    combined = pd.concat([prices_df.loc[common_idx], returns_df.loc[common_idx]], axis=1)
     combined.index.name = 'Date'
-    combined.to_csv(output_file)
     
-    print(f"\n📁 Saved to {output_file}")
-    print(f"   Rows: {len(combined)}")
-    print(f"   Price columns: {len(prices.columns)}")
-    print(f"   Return columns: {len(returns.columns)}")
+    # Save
+    combined.to_csv(args.output)
     
-    # Also save sector mapping
-    sector_map = create_sector_mapping(prices)
-    sector_map.to_csv('sector_mapping.csv', index=False)
-    print(f"   Sector mapping saved to sector_mapping.csv")
+    print(f"\n✅ Saved to {args.output}")
+    print(f"   Trading days: {len(combined)}")
+    print(f"   Tickers: {len(prices.columns)}")
+    print(f"   Date range: {combined.index[0].date()} to {combined.index[-1].date()}")
     
-    return combined
-
-
-def main():
-    """Main execution"""
+    # Summary
     print("\n" + "=" * 70)
-    print("AI FINANCE PROJECT - REAL DATA FETCHER")
-    print("Weakness Compensation Framework")
+    print("SUMMARY BY SECTOR")
     print("=" * 70)
-    
-    # Fetch data (last 2 years)
-    prices = fetch_price_data()
-    
-    # Save to CSV
-    data = save_data(prices)
-    
-    # Print summary statistics
-    returns = calculate_returns(prices)
-    
-    print("\n" + "=" * 70)
-    print("SUMMARY STATISTICS")
-    print("=" * 70)
-    
     for sector, tickers in ASSET_UNIVERSE.items():
         available = [t for t in tickers if t in returns.columns]
         if available:
-            sector_ret = returns[available].mean(axis=1)
-            ann_ret = sector_ret.mean() * 252
-            ann_vol = sector_ret.std() * np.sqrt(252)
-            sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
-            print(f"{sector:12} | Tickers: {len(available):2} | "
-                  f"Ann.Ret: {ann_ret:6.1%} | Vol: {ann_vol:6.1%} | Sharpe: {sharpe:5.2f}")
-    
-    print("\n✅ Data fetching complete!")
-    print("=" * 70)
-    
-    return data
-
+            sect_ret = returns[available].mean(axis=1)
+            ann_ret = sect_ret.mean() * 252
+            ann_vol = sect_ret.std() * np.sqrt(252)
+            print(f"{sector:12} | {len(available):2} tickers | Ret: {ann_ret:6.1%} | Vol: {ann_vol:6.1%}")
 
 if __name__ == "__main__":
     main()

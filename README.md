@@ -1,78 +1,87 @@
-# AI Finance Project - Weakness Compensation Framework
+# AI Finance Project v2
+## Weakness Compensation Framework - Master's Thesis
 
-## Master's Thesis Implementation
+### Key Features
+- **Real Data Only** - No synthetic/sample data
+- **Multi-Source News Scraper** - Finviz → Yahoo → Google RSS → MarketWatch fallback chain
+- **Configurable Trading Days** - 1 year, 2 years, 5 years, or custom
+- **Complete Statistical Validation** - HAC alpha/beta, bootstrap CI, subperiod tests
+- **FinBERT Sentiment** - Real NLP analysis
 
-Generated: 2025-12-03 02:36:05
+### Files
+```
+fetch_real_data.py           # Yahoo Finance data fetcher
+multi_source_news_scraper.py # Multi-source news with fallback
+enhanced_integrated_model_v2.py  # Complete model with validation
+enhanced_dashboard_v3.py     # Streamlit dashboard
+requirements.txt             # Dependencies
+```
 
-## Files
-
-1. **fetch_real_data.py** - Downloads real market data from Yahoo Finance
-2. **real_news_scraper_bs4.py** - Scrapes Finviz news with FinBERT sentiment
-3. **enhanced_integrated_model.py** - Weakness Compensation Framework model
-4. **enhanced_dashboard_v3.py** - Streamlit visualization dashboard
-5. **requirements.txt** - Python dependencies
-
-## Usage
-
-### Step 1: Install Dependencies
+### Quick Start
 ```bash
+# 1. Install dependencies
 pip install -r requirements.txt
-```
 
-### Step 2: Fetch Market Data
-```bash
-python fetch_real_data.py
-```
-This creates: `real_backtest_panel.csv`
+# 2. Fetch market data (2 years)
+python fetch_real_data.py --trading-days 504
 
-### Step 3: Scrape News & Sentiment
-```bash
-python real_news_scraper_bs4.py
-```
-This creates: `real_sentiment_data.csv`
+# 3. Collect sentiment data
+python multi_source_news_scraper.py --trading-days 504
 
-### Step 4: Run Dashboard
-```bash
+# 4. Run dashboard
 streamlit run enhanced_dashboard_v3.py
 ```
 
-## Asset Universe
+### Trading Days Options
+```bash
+# 1 year
+python fetch_real_data.py --trading-days 252
 
-- **Technology (10):** AAPL, MSFT, NVDA, AVGO, ORCL, ADBE, CRM, AMD, QCOM, INTC
-- **Healthcare (10):** LLY, UNH, JNJ, MRK, ABBV, TMO, ABT, PFE, AMGN, DHR
-- **Financials (10):** JPM, V, MA, BAC, WFC, MS, GS, BLK, C, AXP
-- **Consumer (10):** AMZN, TSLA, HD, PG, COST, WMT, KO, PEP, MCD, NKE
-- **Energy (10):** XOM, CVX, COP, SLB, EOG, MPC, PSX, VLO, OXY, HAL
-- **Utilities (10):** NEE, SO, DUK, CEG, AEP, SRE, PEG, ED, EXC, XEL
-- **Bonds (10):** TLT, IEF, SHY, LQD, HYG, BND, AGG, MUB, TIP, BNDX
-- **Commodities (10):** GLD, SLV, USO, UNG, DBC, DBA, GSG, PALL, PPLT, CPER
-- **Indices (4):** SPY, QQQ, IWM, DIA
+# 2 years (default)
+python fetch_real_data.py --trading-days 504
 
-Total: 94 assets
+# 3 years
+python fetch_real_data.py --trading-days 756
 
-## Model Architecture
+# 5 years
+python fetch_real_data.py --trading-days 1260
+```
 
-### Layer 1: Dynamic Factor Loading (Kalman Filter)
-- Time-varying beta estimation
-- Adapts to regime changes
+### News Sources (Fallback Chain)
+1. **Finviz** - Primary source for stock-specific news
+2. **Yahoo Finance** - Backup for major tickers
+3. **Google News RSS** - General financial news
+4. **MarketWatch** - Additional coverage
+5. **Seeking Alpha** - Analysis articles
+6. **NewsAPI** - Optional (requires free API key)
 
-### Layer 2: Sentiment Integration (FinBERT)
-- ProsusAI/finbert model
-- Real news from Finviz
-- Daily aggregated sentiment
+If one source fails, the next is tried automatically.
 
-### Layer 3: GARCH-MIDAS Volatility
-- Short-term: GARCH(1,1) component
-- Long-term: MIDAS (22-day) component
-- Volatility forecasting
+### Model Architecture
+```
+Layer 1: Dynamic Factor Loading
+         └─ Kalman Filter (Time-varying Beta)
+         
+Layer 2: Sentiment Integration  
+         └─ FinBERT (ProsusAI/finbert)
+         
+Layer 3: GARCH-MIDAS Volatility
+         └─ Short-term GARCH + Long-term MIDAS
+```
 
-## Important Notes
+### Statistical Validation
+- **HAC Standard Errors** - Newey-West correction for autocorrelation
+- **Bootstrap Analysis** - Block bootstrap for confidence intervals
+- **Subperiod Tests** - Consistency across time periods
+- **Transaction Cost Sensitivity** - Breakeven cost analysis
 
-- Uses **ONLY REAL DATA** - No synthetic data
-- Requires internet connection for Yahoo Finance and Finviz
-- FinBERT requires ~500MB download on first run
-- Respects rate limits (1.5-3.0 second delays)
-
-## License
-
-For academic use - Master's Thesis in AI Finance
+### Asset Universe (94 assets)
+- Technology (10): AAPL, MSFT, NVDA, etc.
+- Healthcare (10): LLY, UNH, JNJ, etc.
+- Financials (10): JPM, V, MA, etc.
+- Consumer (10): AMZN, TSLA, HD, etc.
+- Energy (10): XOM, CVX, COP, etc.
+- Utilities (10): NEE, SO, DUK, etc.
+- Bonds (10): TLT, IEF, SHY, etc.
+- Commodities (10): GLD, SLV, USO, etc.
+- Indices (4): SPY, QQQ, IWM, DIA

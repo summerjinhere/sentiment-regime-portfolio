@@ -1,0 +1,45 @@
+﻿
+=== Running Detailed Experiment ===
+
+======================================================================
+LOADING DATA
+======================================================================
+??Price data: 1259 days, 84 assets
+   Date range: 2020-11-30 to 2025-12-03
+   Benchmark: SPY
+??Sentiment loaded: 504 days, 85 tickers
+
+======================================================================
+FITTING MODEL COMPONENTS
+======================================================================
+
+[Layer 1] Dynamic Factor Loading (Kalman Filter)...
+   ??Fitted 84 assets
+   Average current beta: 0.679
+
+[Layer 2] Sentiment Integration...
+   ??Sentiment data active
+
+[Layer 3] GARCH-MIDAS Volatility...
+   ??Fitted 84 volatility models
+
+======================================================================
+??MODEL FITTING COMPLETE
+======================================================================
+
+Mean Coefficients:
+const        0.000085
+beta_dyn     0.005647
+sentiment    0.000151
+vol_midas   -0.092498
+dtype: float64
+
+T-Stats:
+const        0.100819
+beta_dyn     1.551216
+sentiment    0.145160
+vol_midas   -1.189850
+dtype: float64
+
+Long-Short Validation:
+{'alpha_daily': np.float64(0.001246955285648772), 'alpha_annual': np.float64(0.3142327319834905), 'alpha_se': np.float64(0.009524099658017324), 'alpha_tstat': np.float64(2.0783908402724265), 'alpha_pval': np.float64(0.03767337568090695), 'alpha_ci_lower': np.float64(0.2955658396686063), 'alpha_ci_upper': np.float64(0.3328996242983747), 'beta': np.float64(-0.05850539825000362), 'beta_se': np.float64(0.06346491260248174), 'beta_tstat': np.float64(-0.9218542317462487), 'beta_pval': np.float64(0.35660461508452124), 'beta_ci_lower': np.float64(-0.18289434123285003), 'beta_ci_upper': np.float64(0.06588354473284277), 'r_squared': np.float64(0.0008868911146590053), 'n_observations': 1027, 'significant': np.True_}

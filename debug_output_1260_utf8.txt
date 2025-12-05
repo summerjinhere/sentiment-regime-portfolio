@@ -1,0 +1,32 @@
+﻿======================================================================
+REAL DATA FETCHER - Yahoo Finance
+======================================================================
+Tickers: 84
+Date range: 2020-10-01 to 2025-12-04
+Target trading days: 1260
+
+Downloading...
+DEBUG: Prices shape after extraction: (1300, 84)
+DEBUG: Prices columns sample: ['AAPL', 'ABBV', 'ABT', 'ADBE', 'AEP', 'AGG', 'AMD', 'AMGN', 'AMZN', 'AVGO']
+DEBUG: Prices shape after dropna(axis=1): (1300, 84)
+DEBUG: Prices shape after ffill/bfill: (1300, 84)
+DEBUG: Returns shape after pct_change().dropna(): (1259, 84)
+DEBUG: Returns columns sample: ['AAPL', 'ABBV', 'ABT', 'ADBE', 'AEP', 'AGG', 'AMD', 'AMGN', 'AMZN', 'AVGO']
+
+??Saved to real_backtest_panel.csv
+   Trading days: 1259
+   Tickers: 84
+   Date range: 2020-11-30 to 2025-12-03
+
+======================================================================
+SUMMARY BY SECTOR
+======================================================================
+Technology   | 10 tickers | Ret:  25.9% | Vol:  28.6%
+Healthcare   | 10 tickers | Ret:  13.5% | Vol:  15.5%
+Financials   | 10 tickers | Ret:  22.0% | Vol:  22.2%
+Consumer     | 10 tickers | Ret:  12.5% | Vol:  16.4%
+Energy       | 10 tickers | Ret:  26.4% | Vol:  30.5%
+Utilities    | 10 tickers | Ret:  15.3% | Vol:  16.9%
+Bonds        | 10 tickers | Ret:  -0.1% | Vol:   6.1%
+Commodities  | 10 tickers | Ret:  12.9% | Vol:  17.6%
+Indices      |  4 tickers | Ret:  13.9% | Vol:  18.1%
