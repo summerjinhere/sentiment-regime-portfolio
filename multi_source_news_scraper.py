@@ -1,4 +1,3 @@
-import os
 """
 Multi-Source News Scraper with FinBERT Sentiment
 =================================================
@@ -20,6 +19,7 @@ Features:
 - Automatic source switching on failure
 """
 
+import os
 import pandas as pd
 import numpy as np
 import requests
@@ -48,8 +48,8 @@ class ScraperConfig:
         end_date: str = None,
         newsapi_key: str = os.getenv("NEWSAPI_KEY", ""),
         alphavantage_key: str = None,
-        rate_limit_min: float = 1.5,
-        rate_limit_max: float = 3.0,
+        rate_limit_min: float = 0.1,
+        rate_limit_max: float = 0.5,
         max_retries: int = 3
     ):
         self.trading_days = trading_days
@@ -808,6 +808,23 @@ class MultiSourceNewsScraper:
         all_headlines = []
         failed_tickers = []
         
+        # Resume capability
+        import os
+        if os.path.exists('raw_headlines_partial.csv'):
+            try:
+                partial_df = pd.read_csv('raw_headlines_partial.csv')
+                if not partial_df.empty and 'ticker' in partial_df.columns:
+                    existing_tickers = partial_df['ticker'].unique().tolist()
+                    all_headlines = partial_df.to_dict('records')
+                    print(f"🔄 Resuming... Found {len(existing_tickers)} tickers in partial save.")
+                    tickers = [t for t in tickers if t not in existing_tickers]
+            except Exception as e:
+                print(f"⚠️ Could not load partial save: {e}")
+        
+        if not tickers:
+            print("✅ All tickers already scraped.")
+            return pd.DataFrame(all_headlines)
+        
         for i, ticker in enumerate(tickers, 1):
             print(f"[{i:3}/{len(tickers)}] {ticker:6}...", end=" ")
             
@@ -827,7 +844,28 @@ class MultiSourceNewsScraper:
                     self.config.rate_limit_min,
                     self.config.rate_limit_max
                 ))
-        
+            
+            # Save periodically
+            if i % 10 == 0:
+                temp_df = pd.DataFrame(all_headlines)
+                temp_df.to_csv('raw_headlines_partial.csv', index=False)
+                
+                # Also save aggregated sentiment
+                try:
+                    agg = SentimentAggregator(self.config)
+                    sent_daily = agg.aggregate_daily(temp_df)
+                    sent_filtered = agg.filter_by_trading_days(
+                        sent_daily,
+                        trading_days=self.config.trading_days,
+                        start_date=self.config.start_date,
+                        end_date=self.config.end_date
+                    )
+                    sent_filtered.index.name = 'Date'
+                    sent_filtered.to_csv('real_sentiment_data.csv')
+                    print(f"   (Saved partial sentiment data: {len(sent_filtered)} days)")
+                except Exception as e:
+                    print(f"   (Failed to save partial sentiment: {e})")
+
         df = pd.DataFrame(all_headlines)
         
         print("\n" + "=" * 70)
@@ -975,7 +1013,7 @@ def main():
                        help='Start date (YYYY-MM-DD)')
     parser.add_argument('--end-date', type=str, default=None,
                        help='End date (YYYY-MM-DD)')
-    parser.add_argument('--newsapi-key', type=str, default=os.getenv("NEWSAPI_KEY", ""),
+    parser.add_argument('--newsapi-key', type=str, default=os.getenv("NEWSAPI_KEY"),
                        help='NewsAPI.org API key (optional)')
     parser.add_argument('--output', type=str, default='real_sentiment_data.csv',
                        help='Output file path')

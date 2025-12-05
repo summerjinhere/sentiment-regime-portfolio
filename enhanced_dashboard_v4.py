@@ -323,7 +323,7 @@ def plot_volatility(model, ticker: str):
 # MAIN APP
 # =============================================================================
 
-def main():
+def run_dashboard():
     st.markdown('<h1 class="main-header">🎯 AI Finance Dashboard v4</h1>', unsafe_allow_html=True)
     st.markdown("<div style='text-align: center; color: #666; margin-bottom: 2rem;'>4-Regime Framework | Duke Feedback Incorporated | Train/Test Split</div>", unsafe_allow_html=True)
     
@@ -376,6 +376,18 @@ def main():
         with st.spinner("Loading model..."):
             model = load_model(trading_days, config)
     
+    st.sidebar.subheader("🛡️ Risk Management")
+    use_vol_managed = st.sidebar.checkbox("Volatility Targeting (BSC 2015)", value=False)
+    target_vol = st.sidebar.slider("Target Volatility (%)", 5.0, 30.0, 12.0, 1.0) / 100
+    
+    use_crash_overlay = st.sidebar.checkbox("Crash Overlay (DM 2016)", value=False)
+    crash_quantile = st.sidebar.slider("Crash Quantile (Top %)", 0.5, 0.95, 0.8, 0.05)
+    crash_scale = st.sidebar.slider("Crash Exposure Scale", 0.0, 1.0, 0.5, 0.1)
+    
+    st.sidebar.subheader("🔬 Inference Settings")
+    inference_method = st.sidebar.selectbox("Alpha Inference Method", ["OLS", "NW", "BlockBootstrap"])
+    num_strategies = st.sidebar.number_input("Num Strategies (for Adj P-val)", 1, 100, 10)
+    
     # STATUS BAR
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1: st.metric("📊 Assets", len(returns.columns))
@@ -387,11 +399,25 @@ def main():
     st.divider()
     
     # TABS
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["💰 Performance", "🎯 4-Regime", "📊 Fama-MacBeth", "🧪 Ablation", "📈 Factors", "🔬 Robustness", "📋 Report"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["💰 Performance", "🎯 4-Regime", "📊 Fama-MacBeth", "🧪 Ablation", "📈 Factors", "🔬 Robustness", "💭 Sentiment", "📋 Report"])
     
     if model is not None:
         weights = model.get_optimal_weights()
         strategy_returns = model.run_backtest(weights)
+        
+        # Apply Risk Management
+        if use_vol_managed:
+            strategy_returns = model.performance.apply_volatility_management(
+                strategy_returns, target_vol_annual=target_vol
+            )
+        
+        if use_crash_overlay:
+            # Use market returns as proxy for crash detection
+            market_vol = benchmark_returns.rolling(22).std() * np.sqrt(252)
+            strategy_returns = model.performance.apply_crash_overlay(
+                strategy_returns, market_vol, crash_quantile=crash_quantile, crash_scale=crash_scale
+            )
+            
     else:
         weights = pd.Series(1.0/len(returns.columns), index=returns.columns)
         strategy_returns = (returns * weights).sum(axis=1)
@@ -542,21 +568,48 @@ def main():
                 st.metric("T-Statistic", f"{ab['alpha_tstat']:.3f}")
                 st.metric("P-Value", f"{ab['alpha_pval']:.4f}")
                 st.metric("R-Squared", f"{ab['r_squared']:.2%}")
-                st.success("✅ Significant") if ab['significant'] else st.warning("⚠️ Not Significant")
+                st.metric("R-Squared", f"{ab['r_squared']:.2%}")
+                if ab['significant']:
+                    st.success("✅ Significant")
+                else:
+                    st.warning("⚠️ Not Significant")
             
             with c2:
+
                 st.subheader("FF5 + Momentum Alpha")
                 if RESEARCH_AVAILABLE:
                     fv = FactorValidatorV2(model=model)
-                    ff5_result = fv.run_regression(strategy_returns, model_type="FF5+MOM", market_returns=benchmark_returns)
-                    if 'error' not in ff5_result:
-                        st.metric("Alpha (Annual)", f"{ff5_result['alpha_annual']:.2%}")
-                        st.metric("T-Statistic", f"{ff5_result['alpha_tstat']:.3f}")
-                        st.metric("P-Value", f"{ff5_result['alpha_pval']:.4f}")
-                        st.metric("R-Squared", f"{ff5_result['r_squared']:.2%}")
-                        st.success("✅ Significant") if ff5_result['alpha_pval'] < 0.05 else st.warning("⚠️ Not Significant")
+                    
+                    # Use robust inference if available in model validator
+                    # But FactorValidatorV2 is separate. 
+                    # Let's use the new compute_factor_alpha from StatisticalValidator if possible,
+                    # or update FactorValidatorV2. 
+                    # For now, we'll use the new method in StatisticalValidator for the main strategy
+                    
+                    # Construct factor data for the new method
+                    if fv.factor_data is None:
+                        fv._construct_proxy_factors()
+                    
+                    if fv.factor_data is not None:
+                        robust_res = validator.compute_factor_alpha(
+                            strategy_returns, 
+                            fv.factor_data, 
+                            method=inference_method,
+                            num_strategies=num_strategies
+                        )
+                        
+                        st.metric("Alpha (Annual)", f"{robust_res['alpha_annual']:.2%}")
+                        st.metric("T-Statistic", f"{robust_res['alpha_tstat']:.3f}")
+                        st.metric("P-Value", f"{robust_res['alpha_pval']:.4f}")
+                        st.metric("Adj P-Value (HLZ)", f"{robust_res['adj_pval']:.4f}")
+                        st.caption(f"95% CI: [{robust_res['alpha_ci'][0]:.2%}, {robust_res['alpha_ci'][1]:.2%}]")
+                        
+                        if robust_res['alpha_pval'] < 0.05:
+                            st.success("✅ Significant (p < 0.05)")
+                        else:
+                            st.warning("⚠️ Not Significant")
                     else:
-                        st.warning(f"Error: {ff5_result['error']}")
+                        st.warning("Could not construct factors")
                 else:
                     st.info("FF5+MOM requires research_pipeline_v2")
             
@@ -627,8 +680,51 @@ def main():
         else:
             st.warning("⚠️ Model not loaded.")
     
-    # TAB 7: Report
+    # TAB 7: Sentiment
     with tab7:
+        st.header("💭 Sentiment Analysis")
+        if sentiment is not None:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.subheader("Market Sentiment vs Return")
+                if 'MARKET_SENTIMENT' in sentiment.columns:
+                    mkt_sent = sentiment['MARKET_SENTIMENT']
+                    fig_sent = make_subplots(specs=[[{"secondary_y": True}]])
+                    fig_sent.add_trace(go.Scatter(x=mkt_sent.index, y=mkt_sent.rolling(22).mean(), name="Sentiment (1M MA)", line=dict(color='blue')), secondary_y=False)
+                    fig_sent.add_trace(go.Scatter(x=benchmark_returns.index, y=benchmark_returns.rolling(22).mean(), name="Market Ret (1M MA)", line=dict(color='gray', dash='dot')), secondary_y=True)
+                    fig_sent.update_layout(title="Market Sentiment vs Returns", template="plotly_white", height=400)
+                    st.plotly_chart(fig_sent, use_container_width=True)
+                else:
+                    st.info("No MARKET_SENTIMENT column found.")
+            
+            with c2:
+                st.subheader("Ticker Sentiment")
+                sel_ticker_sent = st.selectbox("Select Ticker for Sentiment", available_tickers, key='sent_ticker')
+                if sel_ticker_sent in sentiment.columns:
+                    ts_sent = sentiment[sel_ticker_sent]
+                    fig_ts = plot_sentiment_signal(sentiment, sel_ticker_sent)
+                    st.plotly_chart(fig_ts, use_container_width=True)
+                else:
+                    st.warning(f"No sentiment data for {sel_ticker_sent}")
+            
+            st.divider()
+            st.subheader("Sentiment Distribution")
+            latest_sent = sentiment.iloc[-1]
+            fig_hist = px.histogram(latest_sent, nbins=30, title=f"Sentiment Distribution ({sentiment.index[-1].date()})")
+            fig_hist.update_layout(showlegend=False, template="plotly_white", height=350)
+            st.plotly_chart(fig_hist, use_container_width=True)
+            
+            st.subheader("Coverage")
+            coverage = sentiment.count(axis=1)
+            fig_cov = px.area(coverage, title="Number of Assets with Sentiment Signal")
+            fig_cov.update_layout(showlegend=False, template="plotly_white", height=300)
+            st.plotly_chart(fig_cov, use_container_width=True)
+            
+        else:
+            st.warning("⚠️ Sentiment data not loaded.")
+
+    # TAB 8: Report
+    with tab8:
         st.header("📋 Summary Report")
         if model is not None:
             summary = model.summary()
@@ -683,7 +779,9 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             st.download_button("📥 Download Report (Markdown)", report, file_name=f"ai_finance_report_v2_{datetime.now().strftime('%Y%m%d')}.md", mime="text/markdown")
         else:
             st.warning("Load the model to generate report.")
+    
+    return None
 
 
 if __name__ == "__main__":
-    main()
+    run_dashboard()

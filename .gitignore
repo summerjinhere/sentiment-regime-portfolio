@@ -29,3 +29,7 @@ real_backtest_panel.csv
 # Scraped third-party news headlines, regenerate with multi_source_news_scraper.py
 raw_headlines.csv
 raw_headlines_partial.csv
+
+# raw market data (Yahoo Finance terms: no redistribution) - regenerate locally
+real_backtest_panel.csv
+real_backtest_results.csv
