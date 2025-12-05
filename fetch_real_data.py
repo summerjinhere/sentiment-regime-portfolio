@@ -1,120 +1,183 @@
 """
-Real Market Data Fetcher
-========================
-Downloads historical price data from Yahoo Finance.
-NO SYNTHETIC DATA - Real market data only.
+Fetch Real Data - Price and Returns Data Collection
+====================================================
+
+This script fetches real market data from Yahoo Finance.
+Required for running the AI Finance Dashboard v4.
 """
 
 import pandas as pd
 import numpy as np
-import argparse
 from datetime import datetime, timedelta
 import warnings
-import sys
 warnings.filterwarnings('ignore')
-sys.stdout.reconfigure(encoding='utf-8')
 
-ASSET_UNIVERSE = {
-    'Technology': ['AAPL', 'MSFT', 'NVDA', 'AVGO', 'ORCL', 'ADBE', 'CRM', 'AMD', 'QCOM', 'INTC'],
-    'Healthcare': ['LLY', 'UNH', 'JNJ', 'MRK', 'ABBV', 'TMO', 'ABT', 'PFE', 'AMGN', 'DHR'],
-    'Financials': ['JPM', 'V', 'MA', 'BAC', 'WFC', 'MS', 'GS', 'BLK', 'C', 'AXP'],
-    'Consumer': ['AMZN', 'TSLA', 'HD', 'PG', 'COST', 'WMT', 'KO', 'PEP', 'MCD', 'NKE'],
-    'Energy': ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL'],
-    'Utilities': ['NEE', 'SO', 'DUK', 'CEG', 'AEP', 'SRE', 'PEG', 'ED', 'EXC', 'XEL'],
-    'Bonds': ['TLT', 'IEF', 'SHY', 'LQD', 'HYG', 'BND', 'AGG', 'MUB', 'TIP', 'BNDX'],
-    'Commodities': ['GLD', 'SLV', 'USO', 'UNG', 'DBC', 'DBA', 'GSG', 'PALL', 'PPLT', 'CPER'],
-    'Indices': ['SPY', 'QQQ', 'IWM', 'DIA']
-}
+try:
+    import yfinance as yf
+    YF_AVAILABLE = True
+except ImportError:
+    YF_AVAILABLE = False
+    print("⚠️ yfinance not installed. Run: pip install yfinance")
 
-def get_all_tickers():
-    all_tickers = []
-    for tickers in ASSET_UNIVERSE.values():
-        all_tickers.extend(tickers)
-    return list(set(all_tickers))
+# Default universe: Large-cap tech + diversified sectors
+DEFAULT_TICKERS = [
+    # Tech Giants
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'INTC', 'CRM',
+    # Financials
+    'JPM', 'BAC', 'GS', 'MS', 'WFC', 'C', 'BLK', 'SCHW', 'AXP', 'V',
+    # Healthcare
+    'JNJ', 'UNH', 'PFE', 'MRK', 'ABBV', 'TMO', 'LLY', 'BMY', 'AMGN', 'GILD',
+    # Consumer
+    'WMT', 'HD', 'MCD', 'NKE', 'SBUX', 'TGT', 'COST', 'LOW', 'TJX', 'BKNG',
+    # Industrial
+    'CAT', 'HON', 'UPS', 'BA', 'GE', 'MMM', 'RTX', 'LMT', 'DE', 'UNP',
+    # Energy
+    'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL',
+    # Communication
+    'DIS', 'NFLX', 'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'ATVI', 'EA', 'TTWO',
+    # Benchmarks
+    'SPY', 'QQQ', 'IWM', 'DIA'
+]
 
-def main():
-    parser = argparse.ArgumentParser(description='Fetch real market data')
-    parser.add_argument('--trading-days', type=int, default=5040, help='Number of trading days (~20 years = 5040)')
-    parser.add_argument('--output', type=str, default='real_backtest_panel.csv', help='Output file')
-    args = parser.parse_args()
+
+def fetch_data(
+    tickers: list = None,
+    start_date: str = "2005-01-01",
+    end_date: str = None,
+    output_file: str = "real_backtest_panel.csv"
+):
+    """
+    Fetch historical price data from Yahoo Finance.
+    
+    Args:
+        tickers: List of ticker symbols
+        start_date: Start date (YYYY-MM-DD)
+        end_date: End date (YYYY-MM-DD), defaults to today
+        output_file: Output CSV file path
+    """
+    if not YF_AVAILABLE:
+        print("❌ yfinance not available. Install with: pip install yfinance")
+        return None
+    
+    tickers = tickers or DEFAULT_TICKERS
+    end_date = end_date or datetime.now().strftime("%Y-%m-%d")
     
     print("=" * 70)
-    print("REAL DATA FETCHER - Yahoo Finance")
+    print("FETCHING REAL MARKET DATA")
     print("=" * 70)
+    print(f"Tickers: {len(tickers)}")
+    print(f"Period: {start_date} to {end_date}")
+    print()
     
     try:
-        import yfinance as yf
-    except ImportError:
-        print("Error: yfinance not installed. Run: pip install yfinance")
-        return
-    
-    # Calculate date range
-    end_date = datetime.now()
-    # Add buffer for weekends/holidays
-    start_date = end_date - timedelta(days=int(args.trading_days * 1.5))
-    
-    all_tickers = get_all_tickers()
-    print(f"Tickers: {len(all_tickers)}")
-    print(f"Date range: {start_date.date()} to {end_date.date()}")
-    print(f"Target trading days: {args.trading_days}")
-    
-    # Download
-    print("\nDownloading...")
-    data = yf.download(
-        tickers=all_tickers,
-        start=start_date.strftime('%Y-%m-%d'),
-        end=end_date.strftime('%Y-%m-%d'),
-        progress=False,
-        auto_adjust=True
-    )
-    
-    # Extract Close prices
-    if isinstance(data.columns, pd.MultiIndex):
-        prices = data['Close']
-    else:
-        prices = data
-    
-    # Clean
-    prices = prices.dropna(axis=1, how='all')
-    prices = prices.ffill().bfill()
-    
-    # Limit to trading days
-    if len(prices) > args.trading_days:
-        prices = prices.iloc[-args.trading_days:]
-    
-    # Calculate returns
-    returns = prices.pct_change().dropna()
-    
-    # Create combined DataFrame
-    prices_df = prices.copy()
-    prices_df.columns = [f"{col}_price" for col in prices_df.columns]
-    
-    returns_df = returns.copy()
-    returns_df.columns = [f"{col}_ret" for col in returns_df.columns]
-    
-    common_idx = prices_df.index.intersection(returns_df.index)
-    combined = pd.concat([prices_df.loc[common_idx], returns_df.loc[common_idx]], axis=1)
-    combined.index.name = 'Date'
-    
-    # Save
-    combined.to_csv(args.output)
-    
-    print(f"\n✅ Saved to {args.output}")
-    print(f"   Trading days: {len(combined)}")
-    print(f"   Tickers: {len(prices.columns)}")
-    print(f"   Date range: {combined.index[0].date()} to {combined.index[-1].date()}")
-    
-    # Summary
-    print("\n" + "=" * 70)
-    print("SUMMARY BY SECTOR")
-    print("=" * 70)
-    for sector, tickers in ASSET_UNIVERSE.items():
-        available = [t for t in tickers if t in returns.columns]
-        if available:
-            sect_ret = returns[available].mean(axis=1)
-            ann_ret = sect_ret.mean() * 252
-            ann_vol = sect_ret.std() * np.sqrt(252)
-            print(f"{sector:12} | {len(available):2} tickers | Ret: {ann_ret:6.1%} | Vol: {ann_vol:6.1%}")
+        print("Downloading from Yahoo Finance (Sequential)...")
+        
+        all_prices = []
+        valid_tickers = []
+        
+        for ticker in tickers:
+            try:
+                # Download single ticker
+                df = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                
+                if df.empty:
+                    continue
+                
+                # Extract Close/Adj Close
+                if 'Adj Close' in df.columns:
+                    price = df['Adj Close']
+                elif 'Close' in df.columns:
+                    price = df['Close']
+                else:
+                    # Fallback
+                    price = df.iloc[:, 0] if not df.empty else None
+                
+                if price is not None:
+                    # Rename series to ticker
+                    if isinstance(price, pd.DataFrame):
+                        price = price.iloc[:, 0]
+                    price.name = ticker
+                    all_prices.append(price)
+                    valid_tickers.append(ticker)
+                    print(f"  ✅ {ticker}")
+                else:
+                    print(f"  ⚠️ {ticker} (No price data)")
+                    
+            except Exception as e:
+                print(f"  ❌ {ticker}: {e}")
+                continue
+        
+        print(f"\nSuccessfully fetched {len(valid_tickers)}/{len(tickers)} tickers.")
+        
+        if not all_prices:
+            print("❌ No data downloaded")
+            return None
+        
+        # Combine into DataFrame
+        prices = pd.concat(all_prices, axis=1)
+        prices.columns = valid_tickers
+        
+        # Calculate returns
+        returns = prices.pct_change()
+        
+        # Drop rows with all NaN
+        prices = prices.dropna(how='all')
+        returns = returns.dropna(how='all')
+        
+        # Create panel format
+        panel = pd.DataFrame(index=returns.index)
+        
+        for ticker in prices.columns:
+            panel[f'{ticker}_price'] = prices[ticker]
+            panel[f'{ticker}_ret'] = returns[ticker]
+        
+        # Drop rows with too many NaN
+        panel = panel.dropna(thresh=len(panel.columns) * 0.5)
+        
+        # Fill remaining NaN with 0 for returns
+        ret_cols = [c for c in panel.columns if c.endswith('_ret')]
+        panel[ret_cols] = panel[ret_cols].fillna(0)
+        
+        # Forward fill prices
+        price_cols = [c for c in panel.columns if c.endswith('_price')]
+        panel[price_cols] = panel[price_cols].ffill()
+        
+        # Save
+        panel.to_csv(output_file)
+        
+        print()
+        print("=" * 70)
+        print("DATA COLLECTION COMPLETE")
+        print("=" * 70)
+        print(f"✅ Saved to: {output_file}")
+        print(f"   Trading days: {len(panel)}")
+        print(f"   Assets: {len(prices.columns)}")
+        print(f"   Date range: {panel.index[0].date()} to {panel.index[-1].date()}")
+        print(f"   File size: {panel.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
+        
+        return panel
+
+    except Exception as e:
+        print(f"\n❌ Error processing data: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Fetch real market data")
+    parser.add_argument("--start", default="2005-01-01", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end", default=None, help="End date (YYYY-MM-DD)")
+    parser.add_argument("--output", default="real_backtest_panel.csv", help="Output file")
+    parser.add_argument("--tickers", nargs="+", default=None, help="List of tickers")
+    
+    args = parser.parse_args()
+    
+    fetch_data(
+        tickers=args.tickers,
+        start_date=args.start,
+        end_date=args.end,
+        output_file=args.output
+    )

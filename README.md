@@ -1,87 +1,124 @@
-# AI Finance Project v2
-## Weakness Compensation Framework - Master's Thesis
+# AI Finance v2 - 4-Regime Framework
 
-### Key Features
-- **Real Data Only** - No synthetic/sample data
-- **Multi-Source News Scraper** - Finviz → Yahoo → Google RSS → MarketWatch fallback chain
-- **Configurable Trading Days** - 1 year, 2 years, 5 years, or custom
-- **Complete Statistical Validation** - HAC alpha/beta, bootstrap CI, subperiod tests
-- **FinBERT Sentiment** - Real NLP analysis
+## Duke Feedback Incorporated
 
-### Files
-```
-fetch_real_data.py           # Yahoo Finance data fetcher
-multi_source_news_scraper.py # Multi-source news with fallback
-enhanced_integrated_model_v2.py  # Complete model with validation
-enhanced_dashboard_v3.py     # Streamlit dashboard
-requirements.txt             # Dependencies
-```
+This research framework implements the Weakness Compensation Framework with enhancements based on Duke finance professor feedback.
 
-### Quick Start
+## Key Improvements (v2)
+
+1. **4-Regime Framework**: Vol × Market Direction classification
+   - Low Vol + Bear (LB): Quiet decline
+   - Low Vol + Bull (LU): Quiet rally  
+   - High Vol + Bear (HB): Crisis/Panic
+   - High Vol + Bull (HU): Recovery/Euphoria
+
+2. **Train/Test Split**: 2005-2014 design, 2015-2025 evaluation
+
+3. **Realistic Transaction Costs**: NASDAQ-calibrated (8bps default)
+
+4. **FF5 + Momentum**: Factor adjustment beyond CAPM
+
+5. **Multiple Testing Adjustment**: Benjamini-Hochberg FDR
+
+6. **8-Configuration Ablation Study**
+
+## Files
+
+| File | Description |
+|------|-------------|
+| `enhanced_integrated_model_v3.py` | Core 3-layer model with 4-regime support |
+| `research_pipeline_v2.py` | Fama-MacBeth, Ablation, Factor validation |
+| `enhanced_dashboard_v4.py` | Streamlit dashboard |
+| `fetch_real_data.py` | Yahoo Finance data collection |
+| `multi_source_news_scraper.py` | FinBERT sentiment data |
+
+## Quick Start
+
 ```bash
 # 1. Install dependencies
-pip install -r requirements.txt
+pip install pandas numpy scipy statsmodels yfinance streamlit plotly transformers torch
 
-# 2. Fetch market data (2 years)
-python fetch_real_data.py --trading-days 504
+# 2. Fetch price data (20 years)
+python fetch_real_data.py --start 2005-01-01
 
 # 3. Collect sentiment data
-python multi_source_news_scraper.py --trading-days 504
+python multi_source_news_scraper.py --trading-days 5040
 
 # 4. Run dashboard
-streamlit run enhanced_dashboard_v3.py
+streamlit run enhanced_dashboard_v4.py
 ```
 
-### Trading Days Options
-```bash
-# 1 year
-python fetch_real_data.py --trading-days 252
+## Model Architecture
 
-# 2 years (default)
-python fetch_real_data.py --trading-days 504
-
-# 3 years
-python fetch_real_data.py --trading-days 756
-
-# 5 years
-python fetch_real_data.py --trading-days 1260
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Weakness Compensation Framework                 │
+├─────────────────────────────────────────────────────────────────┤
+│ Layer 1: Dynamic Factor Loading (Kalman Filter)                 │
+│          β_t = β_{t-1} + w_t (time-varying beta)               │
+├─────────────────────────────────────────────────────────────────┤
+│ Layer 2: Sentiment Integration (FinBERT)                        │
+│          4-Regime Interaction: sent_LB, sent_LU, sent_HB, sent_HU│
+├─────────────────────────────────────────────────────────────────┤
+│ Layer 3: GARCH-MIDAS Volatility                                 │
+│          σ²_t = τ_t × g_t (long + short term)                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### News Sources (Fallback Chain)
-1. **Finviz** - Primary source for stock-specific news
-2. **Yahoo Finance** - Backup for major tickers
-3. **Google News RSS** - General financial news
-4. **MarketWatch** - Additional coverage
-5. **Seeking Alpha** - Analysis articles
-6. **NewsAPI** - Optional (requires free API key)
+## 4-Regime Framework
 
-If one source fails, the next is tried automatically.
-
-### Model Architecture
 ```
-Layer 1: Dynamic Factor Loading
-         └─ Kalman Filter (Time-varying Beta)
-         
-Layer 2: Sentiment Integration  
-         └─ FinBERT (ProsusAI/finbert)
-         
-Layer 3: GARCH-MIDAS Volatility
-         └─ Short-term GARCH + Long-term MIDAS
+                    Market Direction
+                    Bear (<0)    Bull (≥0)
+                  ┌────────────┬────────────┐
+Volatility  Low   │   LB       │    LU      │
+(z < 0)           │ Low+Bear   │  Low+Bull  │
+                  ├────────────┼────────────┤
+            High  │   HB       │    HU      │
+(z ≥ 0)           │ High+Bear  │ High+Bull  │
+                  └────────────┴────────────┘
 ```
 
-### Statistical Validation
-- **HAC Standard Errors** - Newey-West correction for autocorrelation
-- **Bootstrap Analysis** - Block bootstrap for confidence intervals
-- **Subperiod Tests** - Consistency across time periods
-- **Transaction Cost Sensitivity** - Breakeven cost analysis
+## Research Pipeline Usage
 
-### Asset Universe (94 assets)
-- Technology (10): AAPL, MSFT, NVDA, etc.
-- Healthcare (10): LLY, UNH, JNJ, etc.
-- Financials (10): JPM, V, MA, etc.
-- Consumer (10): AMZN, TSLA, HD, etc.
-- Energy (10): XOM, CVX, COP, etc.
-- Utilities (10): NEE, SO, DUK, etc.
-- Bonds (10): TLT, IEF, SHY, etc.
-- Commodities (10): GLD, SLV, USO, etc.
-- Indices (4): SPY, QQQ, IWM, DIA
+```python
+from research_pipeline_v2 import run_research_v2, ModelConfig, ResearchDesignV2
+
+config = ModelConfig(transaction_cost_bps=8)
+design = ResearchDesignV2(
+    design_end="2014-12-31",
+    eval_start="2015-01-01",
+    use_4regime=True,
+    vol_threshold=0.0
+)
+
+results = run_research_v2(
+    prices_file="real_backtest_panel.csv",
+    sentiment_file="real_sentiment_data.csv",
+    benchmark="SPY",
+    model_config=config,
+    design=design
+)
+
+# Access results
+print(results['fama_macbeth_eval'])
+print(results['ablation'])
+print(results['validation_ff5mom'])
+```
+
+## Statistical Validation
+
+- **Fama-MacBeth Regressions**: Cross-sectional tests with 4-regime interactions
+- **Bootstrap Analysis**: Block bootstrap (1000 samples, 22-day blocks)
+- **Subperiod Robustness**: 4-period analysis
+- **Transaction Cost Sensitivity**: 0-50 bps range
+- **Multiple Testing**: Benjamini-Hochberg FDR (α=0.10)
+
+## Citation
+
+If you use this framework, please cite:
+```
+AI Finance Weakness Compensation Framework v2
+4-Regime Sentiment Integration Model
+2025
+```
